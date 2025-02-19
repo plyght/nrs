@@ -1,5 +1,5 @@
 # nrs
-a cli nottaking app built in rust with a webserver, command palette, ai, and more.
+a hackable cli nottaking app built in Rust with a webserver, command palette, AI, and more.
 
-## this project is for me to learn rust
-expect breaking bugs, high cpu usage, etc.
+## This project is for me to learn rust
+expect breaking bugs, high CPU usage, etc.
