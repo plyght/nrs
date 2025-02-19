@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notes Home</title>
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #e0d7f7, #ffffff);
+      --text-color: #333;
+      --accent-color: #8a70d6;
+      --card-bg: #fff;
+      --border-color: #d0d4d8;
+      --shadow: 0px 2px 4px rgba(0,0,0,0.2);
+    }
+    body.dark-mode {
+      --bg-gradient: linear-gradient(135deg, #000000, #1a1a1a);
+      --text-color: #e0e0e0;
+      --accent-color: #b497ff;
+      --card-bg: #222;
+      --border-color: #444;
+      --shadow: 0px 2px 4px rgba(0,0,0,0.6);
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg-gradient);
+      color: var(--text-color);
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      transition: background 0.3s, color 0.3s;
+    }
+    header {
+      padding: 1rem;
+      background-color: var(--accent-color);
+      color: #fff;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 2rem;
+    }
+    #notes-container {
+      max-width: 800px;
+      margin: 2rem auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      padding: 0 1rem;
+    }
+    .note-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 1rem;
+      transition: transform 0.2s;
+      cursor: pointer;
+    }
+    .note-card:hover {
+      transform: translateY(-4px);
+    }
+    .note-card h2 {
+      margin: 0 0 0.5rem 0;
+      font-size: 1.2rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.3rem;
+    }
+    .note-card p {
+      font-size: 0.9rem;
+      line-height: 1.4;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-height: 3.6rem;
+    }
+    .toggle-btn {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      background: #fff;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .toggle-btn:hover {
+      background: var(--border-color);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>My Notes</h1>
+  </header>
+  <button class="toggle-btn" id="toggleDark">Toggle Dark Mode</button>
+  <div id="notes-container">
+    <!-- Note cards will be injected here -->
+  </div>
+  <script>
+    function setTheme(theme) {
+      if (theme === 'dark') {
+        document.body.classList.add('dark-mode');
+      } else {
+        document.body.classList.remove('dark-mode');
+      }
+      localStorage.setItem('theme', theme);
+    }
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setTheme('dark');
+    } else {
+      setTheme('light');
+    }
+    document.getElementById('toggleDark').addEventListener('click', () => {
+      setTheme(document.body.classList.contains('dark-mode') ? 'light' : 'dark');
+    });
+
+    // Fetch note list from /notes (assumes backend provides a JSON array)
+    fetch('/notes-list')
+      .then(response => response.json())
+      .then(notes => {
+        const container = document.getElementById('notes-container');
+        notes.forEach(note => {
+          const card = document.createElement('div');
+          card.className = 'note-card';
+          // Simple extraction: assume note object has 'title' and 'preview'
+          card.innerHTML = `<h2>${note.title}</h2><p>${note.preview || ''}</p>`;
+          card.addEventListener('click', () => {
+            window.location.href = "/notes/" + note.slug;
+          });
+          container.appendChild(card);
+        });
+      })
+      .catch(err => {
+        document.getElementById('notes-container').innerHTML = "<p>Error loading notes.</p>";
+      });
+  </script>
+</body>
+</html>
