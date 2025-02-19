@@ -1,6 +1,6 @@
 [package]
 name = "nrs"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 
 [dependencies]
@@ -13,5 +13,7 @@ walkdir = "2.3.2"
 regex = "1.7"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 async-openai = "0.10.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+dirs = "4.0"
+futures = "0.3"
