@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notes Graph Viewer</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f0f0f0;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      background-color: #2c3e50;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    h1 {
+      margin: 0;
+      font-size: 2rem;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    #graph {
+      width: 100%;
+      max-width: 1200px;
+      height: 70vh;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    #controls {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    .tag-node {
+      fill: #e74c3c;
+    }
+    .note-node {
+      fill: #3498db;
+    }
+    .link {
+      stroke: #bdc3c7;
+      stroke-width: 2;
+    }
+    .label {
+      font-size: 12px;
+      fill: #333;
+      pointer-events: none;
+    }
+    #tooltip {
+      position: absolute;
+      background-color: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 0.5rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Notes Graph Viewer</h1>
+  </header>
+  <main>
+    <div id="graph"></div>
+    <div id="controls">
+      <button id="zoomIn">Zoom In</button>
+      <button id="zoomOut">Zoom Out</button>
+      <button id="resetZoom">Reset Zoom</button>
+    </div>
+  </main>
+  <div id="tooltip"></div>
+
+  <script>
+  const width = document.getElementById('graph').clientWidth;
+  const height = document.getElementById('graph').clientHeight;
+
+  const svg = d3.select("#graph")
+    .append("svg")
+    .attr("width", "100%")
+    .attr("height", "100%")
+    .attr("viewBox", [0, 0, width, height])
+    .call(d3.zoom().on("zoom", (event) => {
+      g.attr("transform", event.transform);
+    }));
+
+  const g = svg.append("g");
+
+  const tooltip = d3.select("#tooltip");
+
+  fetch('/graph-data')
+    .then(resp => resp.json())
+    .then(data => {
+      const sim = d3.forceSimulation(data.nodes)
+        .force("link", d3.forceLink(data.links).id(d => d.id).distance(100))
+        .force("charge", d3.forceManyBody().strength(-300))
+        .force("center", d3.forceCenter(width/2, height/2))
+        .force("collision", d3.forceCollide().radius(30));
+
+      const link = g.selectAll(".link")
+        .data(data.links)
+        .enter().append("line")
+        .attr("class", "link");
+
+      const node = g.selectAll(".node")
+        .data(data.nodes)
+        .enter().append("circle")
+        .attr("class", d => d.isTag ? "tag-node" : "note-node")
+        .attr("r", d => d.isTag ? 10 : 8)
+        .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended));
+
+      const label = g.selectAll(".label")
+        .data(data.nodes)
+        .enter().append("text")
+        .attr("class", "label")
+        .text(d => d.id)
+        .attr("dx", 12)
+        .attr("dy", "0.35em");
+
+      node.on("click", (event, d) => {
+        if(d.isTag) {
+          alert("Tag clicked: " + d.id);
+        } else {
+          const noteName = d.id.replace(' ', '_');
+          window.location.href = "/notes/" + noteName;
+        }
+      })
+      .on("mouseover", (event, d) => {
+        tooltip.style("opacity", 1)
+          .html(d.isTag ? `Tag: ${d.id}` : `Note: ${d.id}`)
+          .style("left", (event.pageX + 10) + "px")
+          .style("top", (event.pageY - 10) + "px");
+      })
+      .on("mouseout", () => {
+        tooltip.style("opacity", 0);
+      });
+
+      sim.on("tick", () => {
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        node
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y);
+
+        label
+          .attr("x", d => d.x)
+          .attr("y", d => d.y);
+      });
+
+      function dragstarted(event, d) {
+        if (!event.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragended(event, d) {
+        if (!event.active) sim.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+
+      // Zoom controls
+      d3.select("#zoomIn").on("click", () => {
+        svg.transition().call(d3.zoom().scaleBy, 1.5);
+      });
+
+      d3.select("#zoomOut").on("click", () => {
+        svg.transition().call(d3.zoom().scaleBy, 0.75);
+      });
+
+      d3.select("#resetZoom").on("click", () => {
+        svg.transition().call(d3.zoom().transform, d3.zoomIdentity);
+      });
+    });
+  </script>
+</body>
+</html>

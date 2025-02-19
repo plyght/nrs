@@ -1,0 +1,1128 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+src/
+  main.rs
+static/
+  graph.html
+.gitignore
+Cargo.toml
+README.md
+
+================================================================
+Files
+================================================================
+
+================
+File: src/main.rs
+================
+use std::env;
+use std::fs;
+use std::io::{self, Write};
+use std::path::PathBuf;
+use std::process::{Command, ExitStatus};
+use std::time::Duration;
+
+use actix_files::NamedFile;
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
+use clap::{Parser, Subcommand};
+use dirs::home_dir;
+use futures::executor::block_on;
+use regex::Regex;
+use serde::Serialize;
+use walkdir::WalkDir;
+
+// TUI
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
+};
+use crossterm::execute;
+use ratatui::backend::CrosstermBackend;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Span, Spans};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::{Frame, Terminal};
+
+// AI
+use async_openai::Client;
+use async_openai::types::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs, Role};
+use tokio::task;
+
+type MyError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+/// Return the path to `~/notes`.
+fn notes_dir() -> PathBuf {
+    home_dir().expect("Could not locate home directory.").join("notes")
+}
+
+/// Build a `.md` path for the given stem in `~/notes`.
+fn note_path(stem: &str) -> PathBuf {
+    notes_dir().join(format!("{}.md", stem))
+}
+
+/// Known commands for partial tab completion
+static KNOWN_COMMANDS: &[&str] = &["summarize", "keywords"];
+
+// =======================================================
+// CLI
+// =======================================================
+
+#[derive(Parser, Debug)]
+#[command(name = "nrs", version = "0.4.3", about = "Rust-based TUI & Web for Notes")]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Create a new note
+    New {
+        title: String,
+    },
+    /// Run TUI
+    Tui,
+    /// Start the web server
+    Serve {
+        #[arg(short, long, default_value_t = 4321)]
+        port: u16,
+    },
+}
+
+// =======================================================
+// Graph structures
+// =======================================================
+
+#[derive(Debug, Serialize)]
+struct NoteNode {
+    id: String,
+    isTag: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct NoteLink {
+    source: String,
+    target: String,
+}
+
+// Single tokio runtime
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let cli = Cli::parse();
+
+    let ndir = notes_dir();
+    if !ndir.exists() {
+        fs::create_dir(&ndir).map_err(|e| {
+            eprintln!("Cannot create ~/notes: {}", e);
+            e
+        })?;
+    }
+
+    match cli.command {
+        Commands::New { title } => {
+            if let Err(e) = create_new_note(&title) {
+                eprintln!("Error creating note: {}", e);
+            }
+        }
+        Commands::Tui => {
+            if let Err(e) = run_tui() {
+                eprintln!("Error in TUI: {}", e);
+            }
+        }
+        Commands::Serve { port } => {
+            if let Err(e) = serve_notes(port).await {
+                eprintln!("Server Error: {}", e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Create new note w/ YAML front matter
+fn create_new_note(title: &str) -> io::Result<()> {
+    let slug = title
+        .to_lowercase()
+        .replace(' ', "_")
+        .replace("/", "_")
+        .replace("\\", "_");
+    let path = note_path(&slug);
+    if path.exists() {
+        eprintln!("Note already exists: {}", path.display());
+        return Ok(());
+    }
+    let mut f = fs::File::create(&path)?;
+    let content = format!(
+        r#"---
+title: {t}
+tags: []
+---
+# {t}
+
+Write your note here.
+"#,
+        t = title
+    );
+    f.write_all(content.as_bytes())?;
+    println!("Created note at: {}", path.display());
+    Ok(())
+}
+
+// =======================================================
+// Actix Web
+// =======================================================
+
+async fn serve_notes(port: u16) -> io::Result<()> {
+    println!("Web server on http://127.0.0.1:{}", port);
+    HttpServer::new(|| {
+        App::new()
+            .route("/", web::get().to(index_page))
+            .route("/notes/{stem}", web::get().to(serve_note))
+            .route("/graph", web::get().to(graph_page))
+            .route("/graph-data", web::get().to(graph_data))
+    })
+    .bind(("127.0.0.1", port))?
+    .run()
+    .await
+}
+
+async fn index_page() -> impl Responder {
+    let mut list_html = String::new();
+    for entry in WalkDir::new(notes_dir()).into_iter().filter_map(Result::ok) {
+        if entry.file_type().is_file() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                if let Some(stem) = p.file_stem() {
+                    let s = stem.to_string_lossy().to_string();
+                    let disp = s.replace('_', " ");
+                    list_html.push_str(&format!(
+                        "<li><a href=\"/notes/{0}\">{1}</a></li>",
+                        s, disp
+                    ));
+                }
+            }
+        }
+    }
+    let html = format!(
+r###"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>~/notes Index</title>
+</head>
+<body>
+  <h1>All notes in ~/notes</h1>
+  <ul>{list_html}</ul>
+  <a href="/graph">View Graph</a>
+</body>
+</html>
+"###,
+        list_html = list_html
+    );
+
+    HttpResponse::Ok().content_type("text/html; charset=utf-8").body(html)
+}
+
+async fn serve_note(stem: web::Path<String>) -> actix_web::Result<NamedFile> {
+    let p = note_path(&stem.into_inner());
+    Ok(NamedFile::open(p)?)
+}
+
+async fn graph_page() -> actix_web::Result<NamedFile> {
+    // Serve external "graph.html" from "static/graph.html"
+    Ok(NamedFile::open("static/graph.html")?)
+}
+
+async fn graph_data() -> impl Responder {
+    let (nodes, links) = build_graph();
+    HttpResponse::Ok().json(serde_json::json!({ "nodes": nodes, "links": links }))
+}
+
+/// We'll parse front matter for tags and also find note->note links with [[...]]
+fn build_graph() -> (Vec<NoteNode>, Vec<NoteLink>) {
+    let re_links = Regex::new(r"\[\[(.+?)\]\]").unwrap();
+    let yaml_delim = Regex::new(r"^---\s*$").unwrap();
+    let re_tags = Regex::new(r"^\s*tags:\s*\[([^\]]*)\]").unwrap();
+
+    let mut adjacency = Vec::new(); // (this_stem, [linked_stems])
+    let mut note_tags = Vec::new(); // (this_stem, [tags])
+
+    for entry in WalkDir::new(notes_dir()).into_iter().filter_map(Result::ok) {
+        if entry.file_type().is_file() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                let stem = p.file_stem().unwrap().to_string_lossy().to_string();
+                let content = fs::read_to_string(p).unwrap_or_default();
+
+                // find [[links]]
+                let mut found_links = Vec::new();
+                for caps in re_links.captures_iter(&content) {
+                    if let Some(m) = caps.get(1) {
+                        let c = m.as_str().to_lowercase().replace(' ', "_");
+                        found_links.push(c);
+                    }
+                }
+
+                // parse front matter for tags
+                let mut lines = content.lines();
+                let mut in_yaml = false;
+                let mut tags = Vec::new();
+                let mut fm_lines = Vec::new();
+                while let Some(line) = lines.next() {
+                    if yaml_delim.is_match(line) {
+                        if !in_yaml {
+                            in_yaml = true;
+                            continue;
+                        } else {
+                            break;
+                        }
+                    }
+                    if in_yaml {
+                        fm_lines.push(line);
+                    }
+                }
+                for l in fm_lines {
+                    if let Some(caps) = re_tags.captures(l) {
+                        let inside = caps.get(1).unwrap().as_str();
+                        let raw_tags: Vec<&str> = inside.split(',').map(|s| s.trim()).collect();
+                        for t in raw_tags {
+                            if !t.is_empty() {
+                                tags.push(t.to_lowercase().replace(' ', "_"));
+                            }
+                        }
+                    }
+                }
+
+                adjacency.push((stem.clone(), found_links));
+                note_tags.push((stem, tags));
+            }
+        }
+    }
+
+    // build sets
+    let mut note_set = std::collections::HashSet::new();
+    let mut tag_set = std::collections::HashSet::new();
+    let mut links = Vec::new();
+
+    // note->note
+    for (src, link_list) in &adjacency {
+        note_set.insert(src.clone());
+        for l in link_list {
+            note_set.insert(l.clone());
+        }
+    }
+    // note->tags
+    for (st, tags) in &note_tags {
+        note_set.insert(st.clone());
+        for t in tags {
+            tag_set.insert(t.clone());
+        }
+    }
+
+    let mut nodes = Vec::new();
+    for n in note_set {
+        nodes.push(NoteNode { id: n, isTag: false });
+    }
+    for t in tag_set {
+        nodes.push(NoteNode { id: t, isTag: true });
+    }
+
+    // note->note links
+    for (src, link_list) in adjacency {
+        for l in link_list {
+            links.push(NoteLink {
+                source: src.clone(),
+                target: l,
+            });
+        }
+    }
+    // note->tag
+    for (st, tags) in note_tags {
+        for t in tags {
+            links.push(NoteLink {
+                source: st.clone(),
+                target: t,
+            });
+        }
+    }
+
+    (nodes, links)
+}
+
+// Overlays for the TUI
+#[derive(Debug, PartialEq)]
+enum OverlayMode {
+    None,
+    CommandPalette,
+    NoteCreation,
+    Help,
+}
+
+// TUI State
+struct AppState {
+    notes: Vec<String>,
+    selected_idx: usize,
+
+    overlay: OverlayMode,
+    overlay_input: String,
+
+    last_ai_output: Option<String>,
+    preview: Option<String>,
+
+    /// We'll store a "status message" for events like editor exit or new note creation
+    status_message: Option<String>,
+}
+
+impl AppState {
+    fn new() -> Self {
+        let mut s = Self {
+            notes: load_notes_list(),
+            selected_idx: 0,
+            overlay: OverlayMode::None,
+            overlay_input: String::new(),
+            last_ai_output: None,
+            preview: None,
+            status_message: None,
+        };
+        s.update_preview();
+        s
+    }
+    fn next_note(&mut self) {
+        if !self.notes.is_empty() {
+            self.selected_idx = (self.selected_idx + 1) % self.notes.len();
+            self.update_preview();
+        }
+    }
+    fn prev_note(&mut self) {
+        if !self.notes.is_empty() {
+            if self.selected_idx == 0 {
+                self.selected_idx = self.notes.len() - 1;
+            } else {
+                self.selected_idx -= 1;
+            }
+            self.update_preview();
+        }
+    }
+    fn selected_note(&self) -> Option<&String> {
+        self.notes.get(self.selected_idx)
+    }
+    fn update_preview(&mut self) {
+        self.preview = None;
+        if let Some(st) = self.selected_note() {
+            let p = note_path(st);
+            if let Ok(content) = fs::read_to_string(p) {
+                let lines: Vec<_> = content.lines().take(10).collect();
+                self.preview = Some(lines.join("\n"));
+            }
+        }
+    }
+}
+
+fn run_tui() -> io::Result<()> {
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut term = Terminal::new(backend)?;
+
+    let res = (|| {
+        let mut st = AppState::new();
+        loop {
+            term.draw(|f| ui(f, &st))?;
+
+            if event::poll(Duration::from_millis(50))? {
+                let ev = event::read()?;
+                match ev {
+                    Event::Key(KeyEvent { code, modifiers, .. }) => {
+                        // q always quits
+                        if code == KeyCode::Char('q') && modifiers == KeyModifiers::NONE {
+                            break;
+                        }
+                        match st.overlay {
+                            OverlayMode::None => {
+                                match code {
+                                    KeyCode::Char('j') => st.next_note(),
+                                    KeyCode::Char('k') => st.prev_note(),
+                                    KeyCode::Char('n') => {
+                                        st.overlay = OverlayMode::NoteCreation;
+                                        st.overlay_input.clear();
+                                    }
+                                    KeyCode::Char('e') => {
+                                        if let Some(sn) = st.selected_note() {
+                                            let ed_result = open_in_editor(sn);
+                                            match ed_result {
+                                                Ok(exit_status) => {
+                                                    st.status_message = Some(format!("Editor exit code: {:?}", exit_status));
+                                                    // re-draw after editor
+                                                    execute!(io::stdout(), Clear(ClearType::All))?;
+                                                    st.update_preview();
+                                                }
+                                                Err(e) => {
+                                                    st.status_message = Some(format!("Editor error: {}", e));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    KeyCode::Char(':') => {
+                                        st.overlay = OverlayMode::CommandPalette;
+                                        st.overlay_input.clear();
+                                    }
+                                    KeyCode::Char('h') => {
+                                        st.overlay = OverlayMode::Help;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            OverlayMode::CommandPalette => {
+                                match code {
+                                    KeyCode::Esc => st.overlay = OverlayMode::None,
+                                    KeyCode::Enter => {
+                                        let cmd = st.overlay_input.clone();
+                                        if let Err(e) = handle_cmd(cmd, &mut st) {
+                                            st.last_ai_output = Some(format!("Error: {}", e));
+                                        }
+                                        st.overlay_input.clear();
+                                        st.overlay = OverlayMode::None;
+                                    }
+                                    KeyCode::Backspace => {
+                                        st.overlay_input.pop();
+                                    }
+                                    KeyCode::Char('\t') => {
+                                        let partial = st.overlay_input.trim_start_matches(':');
+                                        let matches: Vec<_> = KNOWN_COMMANDS
+                                            .iter()
+                                            .filter(|x| x.starts_with(partial))
+                                            .collect();
+                                        if matches.len() == 1 {
+                                            st.overlay_input = format!(":{}", matches[0]);
+                                        }
+                                    }
+                                    KeyCode::Char(c) => {
+                                        st.overlay_input.push(c);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            OverlayMode::NoteCreation => {
+                                match code {
+                                    KeyCode::Esc => {
+                                        st.overlay = OverlayMode::None;
+                                        st.overlay_input.clear();
+                                    }
+                                    KeyCode::Backspace => {
+                                        st.overlay_input.pop();
+                                    }
+                                    KeyCode::Enter => {
+                                        // Clone the trimmed input to free any borrow on st.overlay_input.
+                                        let title = st.overlay_input.trim().to_string();
+                                        if !title.is_empty() {
+                                            match create_new_note(&title) {
+                                                Ok(_) => {
+                                                    st.notes = load_notes_list();
+                                                    st.selected_idx = 0;
+                                                    st.update_preview();
+                                                    st.status_message = Some(format!("Note created: {}", title));
+                                                }
+                                                Err(e) => {
+                                                    st.status_message = Some(format!("Error: {}", e));
+                                                }
+                                            }
+                                        }
+                                        st.overlay = OverlayMode::None;
+                                        st.overlay_input.clear();
+                                    }
+                                    KeyCode::Char(c) => {
+                                        st.overlay_input.push(c);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            OverlayMode::Help => {
+                                match code {
+                                    KeyCode::Esc | KeyCode::Char('h') => {
+                                        st.overlay = OverlayMode::None;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    })();
+
+    disable_raw_mode()?;
+    execute!(term.backend_mut(), LeaveAlternateScreen)?;
+    term.show_cursor()?;
+
+    res
+}
+
+/// Returns an `ExitStatus` or error for debugging if needed.
+fn open_in_editor(stem: &str) -> io::Result<ExitStatus> {
+    disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen)?;
+
+    let ed = env::var("EDITOR").or_else(|_| env::var("VISUAL")).unwrap_or_else(|_| "vi".to_string());
+    let p = note_path(stem);
+    let mut child = Command::new(ed).arg(p).spawn()?;
+    let exit_status = child.wait()?;
+
+    // re-enter TUI
+    execute!(io::stdout(), EnterAlternateScreen)?;
+    enable_raw_mode()?;
+    Ok(exit_status)
+}
+
+fn ui<B: ratatui::backend::Backend>(f: &mut Frame<B>, st: &AppState) {
+    // We'll add a 3rd chunk: main area, footer, status bar
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(5),
+            Constraint::Length(3),
+            Constraint::Length(1), // status bar
+        ])
+        .split(f.size());
+
+    // main is splitted horizontally
+    let main_split = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(30), Constraint::Min(30)].as_ref())
+        .split(chunks[0]);
+
+    // Left: notes
+    let items: Vec<ListItem> = st.notes.iter().enumerate().map(|(i, text)| {
+        let style = if i == st.selected_idx {
+            Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+        ListItem::new(text.clone()).style(style)
+    }).collect();
+    let left = List::new(items)
+        .block(Block::default().borders(Borders::ALL).title("~/notes (Press 'h' for help)"));
+    f.render_widget(left, main_split[0]);
+
+    // Right: AI or note preview
+    let lines = if let Some(ai) = &st.last_ai_output {
+        vec![Spans::from(ai.as_str())]
+    } else {
+        if let Some(prev) = &st.preview {
+            prev.lines().map(|l| Spans::from(l)).collect()
+        } else {
+            vec![Spans::from("No note selected.")]
+        }
+    };
+    let right_par = Paragraph::new(lines)
+        .block(Block::default().borders(Borders::ALL).title("Preview / AI"));
+    f.render_widget(right_par, main_split[1]);
+
+    // Footer
+    let foot_sp = Spans::from(vec![
+        Span::styled("q", Style::default().fg(Color::Yellow)),
+        Span::raw(":Quit  "),
+        Span::styled("j/k", Style::default().fg(Color::Yellow)),
+        Span::raw(":Select  "),
+        Span::styled("n", Style::default().fg(Color::Yellow)),
+        Span::raw(":NewNote  "),
+        Span::styled("e", Style::default().fg(Color::Yellow)),
+        Span::raw(":Edit  "),
+        Span::styled(":", Style::default().fg(Color::Yellow)),
+        Span::raw(":Cmd  "),
+        Span::styled("h", Style::default().fg(Color::Yellow)),
+        Span::raw(":Help"),
+    ]);
+    let foot = Paragraph::new(foot_sp)
+        .block(Block::default().borders(Borders::ALL).title("Footer"));
+    f.render_widget(foot, chunks[1]);
+
+    // Status bar
+    let status_txt = if let Some(msg) = &st.status_message {
+        msg.clone()
+    } else {
+        " ".to_string()
+    };
+    let status_par = Paragraph::new(status_txt)
+        .block(Block::default().borders(Borders::ALL).title("Status"));
+    f.render_widget(status_par, chunks[2]);
+
+    // Overlays
+    match st.overlay {
+        OverlayMode::None => {}
+        OverlayMode::CommandPalette => draw_overlay(f, "[Command]", &st.overlay_input, main_split[1]),
+        OverlayMode::NoteCreation => draw_overlay(f, "[New Note Title]", &st.overlay_input, main_split[1]),
+        OverlayMode::Help => draw_help_overlay(f, main_split[1]),
+    }
+}
+
+/// Generic overlay
+fn draw_overlay<B: ratatui::backend::Backend>(f: &mut Frame<B>, title: &str, content: &str, area: Rect) {
+    let h = 3;
+    let w = area.width.saturating_sub(4);
+    let overlay_rect = Rect {
+        x: area.x + 2,
+        y: area.y + area.height.saturating_sub(h) - 2,
+        width: w,
+        height: h,
+    };
+    let block = Block::default().borders(Borders::ALL).title(title);
+    let par = Paragraph::new(content.to_string()).block(block);
+    f.render_widget(par, overlay_rect);
+}
+
+/// A help overlay
+fn draw_help_overlay<B: ratatui::backend::Backend>(f: &mut Frame<B>, area: Rect) {
+    let w = area.width.saturating_sub(8);
+    let h = area.height.saturating_sub(4);
+    let x = area.x + 4;
+    let y = area.y + 2;
+
+    let overlay_rect = Rect { x, y, width: w, height: h };
+    let lines = vec![
+        Spans::from("Keyboard Shortcuts:"),
+        Spans::from("  j/k: Move selection"),
+        Spans::from("  n: Create new note (title overlay)"),
+        Spans::from("  e: Edit current note in $EDITOR; upon exit, TUI re-draws"),
+        Spans::from("  : Summarize or keywords commands"),
+        Spans::from("  h: Toggle this help overlay"),
+        Spans::from("  q: Quit the TUI"),
+        Spans::from("Press ESC or 'h' again to close this help"),
+    ];
+    let block = Block::default().borders(Borders::ALL).title("Help");
+    let par = Paragraph::new(lines).block(block);
+    f.render_widget(par, overlay_rect);
+}
+
+// TUI Helpers
+
+fn load_notes_list() -> Vec<String> {
+    let mut out = Vec::new();
+    for entry in WalkDir::new(notes_dir()).into_iter().filter_map(Result::ok) {
+        if entry.file_type().is_file() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("md") {
+                if let Some(st) = p.file_stem() {
+                    out.push(st.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+// =======================================================
+// Command Handling
+// =======================================================
+
+fn handle_cmd(cmd: String, st: &mut AppState) -> Result<(), MyError> {
+    let trimmed = cmd.trim_start_matches(':').trim();
+    match trimmed {
+        "summarize" => {
+            if let Some(sn_ref) = st.selected_note() {
+                let sn = sn_ref.clone();
+                let content = fs::read_to_string(note_path(&sn))?;
+                let handle = task::spawn_blocking(move || openai_summarize_blocking(content));
+                let text = block_on(handle)??;
+                st.last_ai_output = Some(text);
+                st.status_message = Some(format!("AI Summarize done for '{}'", sn));
+            }
+        }
+        "keywords" => {
+            if let Some(sn_ref) = st.selected_note() {
+                let sn = sn_ref.clone();
+                let content = fs::read_to_string(note_path(&sn))?;
+                let handle = task::spawn_blocking(move || openai_keywords_blocking(content));
+                let text = block_on(handle)??;
+                st.last_ai_output = Some(text);
+                st.status_message = Some(format!("AI Keywords done for '{}'", sn));
+            }
+        }
+        other => {
+            st.last_ai_output = Some(format!("Unknown command: '{}'", other));
+            st.status_message = Some(format!("Unknown command: '{}'", other));
+        }
+    }
+    Ok(())
+}
+
+// =======================================================
+// AI calls
+// =======================================================
+
+fn openai_summarize_blocking(content: String) -> Result<String, MyError> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        let key = env::var("OPENAI_API_KEY")
+            .map_err(|_| "Please set OPENAI_API_KEY!")?;
+        let cli = Client::new().with_api_key(key);
+        let req = CreateChatCompletionRequestArgs::default()
+            .model("gpt-4o-latest")
+            .messages(vec![
+                ChatCompletionRequestMessage {
+                    role: Role::System,
+                    content: "You are a helpful assistant that summarizes notes.".to_string(),
+                    name: None,
+                },
+                ChatCompletionRequestMessage {
+                    role: Role::User,
+                    content: format!("Summarize:\n\n{}", content),
+                    name: None,
+                },
+            ])
+            .build()?;
+        let resp = cli.chat().create(req).await?;
+        let txt = resp
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
+            .unwrap_or_else(|| "No summary received.".to_string());
+        Ok(txt)
+    })
+}
+
+fn openai_keywords_blocking(content: String) -> Result<String, MyError> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async move {
+        let key = env::var("OPENAI_API_KEY")
+            .map_err(|_| "Please set OPENAI_API_KEY!")?;
+        let cli = Client::new().with_api_key(key);
+        let req = CreateChatCompletionRequestArgs::default()
+            .model("gpt-3.5-turbo")
+            .messages(vec![
+                ChatCompletionRequestMessage {
+                    role: Role::System,
+                    content: "You are a helpful assistant that extracts keywords.".to_string(),
+                    name: None,
+                },
+                ChatCompletionRequestMessage {
+                    role: Role::User,
+                    content: format!("Extract keywords:\n\n{}", content),
+                    name: None,
+                },
+            ])
+            .build()?;
+        let resp = cli.chat().create(req).await?;
+        let txt = resp
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
+            .unwrap_or_else(|| "No keywords received.".to_string());
+        Ok(txt)
+    })
+}
+
+================
+File: static/graph.html
+================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notes Graph Viewer</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f0f0f0;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      background-color: #2c3e50;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    h1 {
+      margin: 0;
+      font-size: 2rem;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    #graph {
+      width: 100%;
+      max-width: 1200px;
+      height: 70vh;
+      background-color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    #controls {
+      margin-top: 1rem;
+      display: flex;
+      gap: 1rem;
+    }
+    button {
+      background-color: #3498db;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+    .tag-node {
+      fill: #e74c3c;
+    }
+    .note-node {
+      fill: #3498db;
+    }
+    .link {
+      stroke: #bdc3c7;
+      stroke-width: 2;
+    }
+    .label {
+      font-size: 12px;
+      fill: #333;
+      pointer-events: none;
+    }
+    #tooltip {
+      position: absolute;
+      background-color: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 0.5rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Notes Graph Viewer</h1>
+  </header>
+  <main>
+    <div id="graph"></div>
+    <div id="controls">
+      <button id="zoomIn">Zoom In</button>
+      <button id="zoomOut">Zoom Out</button>
+      <button id="resetZoom">Reset Zoom</button>
+    </div>
+  </main>
+  <div id="tooltip"></div>
+
+  <script>
+  const width = document.getElementById('graph').clientWidth;
+  const height = document.getElementById('graph').clientHeight;
+
+  const svg = d3.select("#graph")
+    .append("svg")
+    .attr("width", "100%")
+    .attr("height", "100%")
+    .attr("viewBox", [0, 0, width, height])
+    .call(d3.zoom().on("zoom", (event) => {
+      g.attr("transform", event.transform);
+    }));
+
+  const g = svg.append("g");
+
+  const tooltip = d3.select("#tooltip");
+
+  fetch('/graph-data')
+    .then(resp => resp.json())
+    .then(data => {
+      const sim = d3.forceSimulation(data.nodes)
+        .force("link", d3.forceLink(data.links).id(d => d.id).distance(100))
+        .force("charge", d3.forceManyBody().strength(-300))
+        .force("center", d3.forceCenter(width/2, height/2))
+        .force("collision", d3.forceCollide().radius(30));
+
+      const link = g.selectAll(".link")
+        .data(data.links)
+        .enter().append("line")
+        .attr("class", "link");
+
+      const node = g.selectAll(".node")
+        .data(data.nodes)
+        .enter().append("circle")
+        .attr("class", d => d.isTag ? "tag-node" : "note-node")
+        .attr("r", d => d.isTag ? 10 : 8)
+        .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended));
+
+      const label = g.selectAll(".label")
+        .data(data.nodes)
+        .enter().append("text")
+        .attr("class", "label")
+        .text(d => d.id)
+        .attr("dx", 12)
+        .attr("dy", "0.35em");
+
+      node.on("click", (event, d) => {
+        if(d.isTag) {
+          alert("Tag clicked: " + d.id);
+        } else {
+          const noteName = d.id.replace(' ', '_');
+          window.location.href = "/notes/" + noteName;
+        }
+      })
+      .on("mouseover", (event, d) => {
+        tooltip.style("opacity", 1)
+          .html(d.isTag ? `Tag: ${d.id}` : `Note: ${d.id}`)
+          .style("left", (event.pageX + 10) + "px")
+          .style("top", (event.pageY - 10) + "px");
+      })
+      .on("mouseout", () => {
+        tooltip.style("opacity", 0);
+      });
+
+      sim.on("tick", () => {
+        link
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
+
+        node
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y);
+
+        label
+          .attr("x", d => d.x)
+          .attr("y", d => d.y);
+      });
+
+      function dragstarted(event, d) {
+        if (!event.active) sim.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+
+      function dragended(event, d) {
+        if (!event.active) sim.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+
+      // Zoom controls
+      d3.select("#zoomIn").on("click", () => {
+        svg.transition().call(d3.zoom().scaleBy, 1.5);
+      });
+
+      d3.select("#zoomOut").on("click", () => {
+        svg.transition().call(d3.zoom().scaleBy, 0.75);
+      });
+
+      d3.select("#resetZoom").on("click", () => {
+        svg.transition().call(d3.zoom().transform, d3.zoomIdentity);
+      });
+    });
+  </script>
+</body>
+</html>
+
+================
+File: .gitignore
+================
+/target
+
+================
+File: Cargo.toml
+================
+[package]
+name = "nrs"
+version = "0.4.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+crossterm = "0.26"
+ratatui = { version = "0.20", features = ["crossterm"] }
+actix-web = "4.3"
+actix-files = "0.6.0"
+walkdir = "2.3.2"
+regex = "1.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-openai = "0.10.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+dirs = "4.0"
+futures = "0.3"
+
+================
+File: README.md
+================
+# nrs
+a cli nottaking app built in rust with a webserver, command palette, ai, and more.
+
+## this project is for me to learn rust
+expect breaking bugs, high cpu usage, etc.
+
+
+
+================================================================
+End of Codebase
+================================================================
