@@ -668,7 +668,7 @@ fn openai_summarize_blocking(content: String) -> Result<String, MyError> {
         let key = env::var("OPENAI_API_KEY")?;
         let cli = Client::new().with_api_key(key);
         let req = CreateChatCompletionRequestArgs::default()
-            .model("gpt-3.5-turbo")
+            .model("gpt-4o")
             .messages(vec![
                 ChatCompletionRequestMessage {
                     role: Role::System,
