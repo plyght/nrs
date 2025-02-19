@@ -14,7 +14,6 @@ use ratatui::text::{Span, Spans};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use crate::notes;
 use crate::commands;
-use walkdir::WalkDir;
 
 #[derive(Debug, PartialEq)]
 pub enum OverlayMode {

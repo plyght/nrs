@@ -11,7 +11,7 @@ use crate::notes::notes_dir;
 #[derive(Debug, Serialize)]
 pub struct NoteNode {
     pub id: String,
-    pub isTag: bool,
+    pub is_tag: bool,
 }
 
 /// A note link in the graph.
@@ -167,10 +167,10 @@ pub fn build_graph() -> (Vec<NoteNode>, Vec<NoteLink>) {
 
     let mut nodes = Vec::new();
     for n in note_set {
-        nodes.push(NoteNode { id: n, isTag: false });
+        nodes.push(NoteNode { id: n, is_tag: false });
     }
     for t in tag_set {
-        nodes.push(NoteNode { id: t, isTag: true });
+        nodes.push(NoteNode { id: t, is_tag: true });
     }
 
     for (src, link_list) in adjacency {

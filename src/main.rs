@@ -7,7 +7,6 @@ pub mod commands;
 use clap::{Parser, Subcommand};
 use std::fs;
 use std::io;
-use dirs::home_dir;
 
 pub type MyError = Box<dyn std::error::Error + Send + Sync + 'static>;
 

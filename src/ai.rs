@@ -39,7 +39,7 @@ pub fn openai_keywords_blocking(content: String) -> Result<String, MyError> {
         let key = env::var("OPENAI_API_KEY").map_err(|_| "Please set OPENAI_API_KEY!")?;
         let cli = Client::new().with_api_key(key);
         let req = CreateChatCompletionRequestArgs::default()
-            .model("gpt-3.5-turbo")
+            .model("gpt-4o-latest")
             .messages(vec![
                 ChatCompletionRequestMessage {
                     role: Role::System,
