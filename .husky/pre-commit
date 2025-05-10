@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Format Rust files
+cargo fmt
+
+# Format JS/TS files in web-ui
+cd web-ui && bun prettier --write . && cd ..
