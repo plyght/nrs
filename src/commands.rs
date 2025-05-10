@@ -1,9 +1,9 @@
-use crate::tui::AppState;
+use crate::ai::{openai_keywords_blocking, openai_summarize_blocking};
 use crate::notes::note_path;
-use std::fs;
-use futures::executor::block_on;
+use crate::tui::AppState;
 use crate::MyError;
-use crate::ai::{openai_summarize_blocking, openai_keywords_blocking};
+use futures::executor::block_on;
+use std::fs;
 use tokio::task;
 
 /// Handle a command entered in the TUI.

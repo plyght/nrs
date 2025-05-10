@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-gradient: linear-gradient(135deg, #e0d7f7, #ffffff);
+  --text-color: #333;
+  --accent-color: #8a70d6;
+  --card-bg: #fff;
+  --border-color: #d0d4d8;
+  --shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
+  --tag-bg: rgba(138, 112, 214, 0.15);
+}
+
+.dark {
+  --bg-gradient: linear-gradient(135deg, #000000, #1a1a1a);
+  --text-color: #e0e0e0;
+  --accent-color: #b497ff;
+  --card-bg: #222;
+  --border-color: #444;
+  --shadow: 0px 2px 4px rgba(0, 0, 0, 0.6);
+  --tag-bg: rgba(180, 151, 255, 0.25);
+}
+
+body {
+  background: var(--bg-gradient);
+  color: var(--text-color);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-md font-medium transition-all duration-300;
+  }
+
+  .btn-primary {
+    @apply bg-primary-500 text-white hover:bg-primary-600 hover:shadow-lg shadow-primary-500/20;
+  }
+
+  .btn-secondary {
+    @apply bg-white/20 backdrop-blur-sm text-white hover:bg-white/30;
+  }
+
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 border border-gray-200 dark:border-gray-700 transition-all duration-300 hover:shadow-lg;
+  }
+
+  .tag {
+    @apply bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 text-xs px-2.5 py-1 rounded-full transition-all duration-300;
+  }
+
+  /* Enhanced Typography */
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4 {
+    @apply text-gray-800 dark:text-gray-100 font-semibold;
+  }
+
+  .prose h1 {
+    @apply text-3xl mb-6 pb-2 border-b border-gray-200 dark:border-gray-700;
+  }
+
+  .prose h2 {
+    @apply text-2xl mt-8 mb-4;
+  }
+
+  .prose h3 {
+    @apply text-xl mt-6 mb-3;
+  }
+
+  .prose p {
+    @apply text-gray-700 dark:text-gray-300 mb-4 leading-relaxed;
+  }
+
+  .prose a {
+    @apply text-primary-600 dark:text-primary-400 hover:underline;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-primary-300 dark:border-primary-700 bg-gray-50 dark:bg-gray-800/50 pl-4 py-2 italic my-4;
+  }
+
+  .prose code {
+    @apply bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+
+  .prose pre {
+    @apply bg-gray-900 dark:bg-black text-gray-100 p-4 rounded-lg overflow-x-auto my-4;
+  }
+
+  .prose pre code {
+    @apply bg-transparent text-inherit p-0 block whitespace-pre;
+  }
+
+  .prose ul,
+  .prose ol {
+    @apply pl-6 mb-4;
+  }
+
+  .prose ul {
+    @apply list-disc;
+  }
+
+  .prose ol {
+    @apply list-decimal;
+  }
+
+  .prose li {
+    @apply mb-1;
+  }
+
+  /* Code syntax highlighting */
+  code .keyword {
+    @apply text-purple-400;
+  }
+
+  code .string {
+    @apply text-green-400;
+  }
+
+  code .comment {
+    @apply text-gray-500;
+  }
+
+  code .number {
+    @apply text-yellow-400;
+  }
+
+  /* Animations */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideInUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideInLeft {
+    from {
+      transform: translateX(-20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes pulse {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .animate-fadeIn {
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  .animate-slideInUp {
+    animation: slideInUp 0.5s ease-out;
+  }
+
+  .animate-slideInLeft {
+    animation: slideInLeft 0.5s ease-out;
+  }
+
+  .animate-pulse-custom {
+    animation: pulse 2s infinite;
+  }
+}

@@ -1,7 +1,7 @@
-use std::env;
 use crate::MyError;
-use async_openai::Client;
 use async_openai::types::{ChatCompletionRequestMessage, CreateChatCompletionRequestArgs, Role};
+use async_openai::Client;
+use std::env;
 
 /// Blocking function to get a summary via OpenAI.
 pub fn openai_summarize_blocking(content: String) -> Result<String, MyError> {
@@ -25,7 +25,9 @@ pub fn openai_summarize_blocking(content: String) -> Result<String, MyError> {
             ])
             .build()?;
         let resp = cli.chat().create(req).await?;
-        let txt = resp.choices.first()
+        let txt = resp
+            .choices
+            .first()
             .map(|c| c.message.content.clone())
             .unwrap_or_else(|| "No summary received.".to_string());
         Ok(txt)
@@ -54,7 +56,9 @@ pub fn openai_keywords_blocking(content: String) -> Result<String, MyError> {
             ])
             .build()?;
         let resp = cli.chat().create(req).await?;
-        let txt = resp.choices.first()
+        let txt = resp
+            .choices
+            .first()
             .map(|c| c.message.content.clone())
             .unwrap_or_else(|| "No keywords received.".to_string());
         Ok(txt)

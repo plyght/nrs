@@ -1,8 +1,8 @@
-pub mod notes;
-pub mod web;
-pub mod tui;
 pub mod ai;
 pub mod commands;
+pub mod notes;
+pub mod tui;
+pub mod web;
 
 use clap::{Parser, Subcommand};
 use std::fs;
@@ -11,7 +11,11 @@ use std::io;
 pub type MyError = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 #[derive(Parser, Debug)]
-#[command(name = "nrs", version = "0.4.3", about = "Rust-based TUI & Web for Notes")]
+#[command(
+    name = "nrs",
+    version = "0.4.3",
+    about = "Rust-based TUI & Web for Notes"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -20,9 +24,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Create a new note
-    New {
-        title: String,
-    },
+    New { title: String },
     /// Run TUI
     Tui,
     /// Start the web server

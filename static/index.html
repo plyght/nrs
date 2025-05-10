@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Notes Home</title>
+  <title>NRS - Notes Home</title>
   <style>
     :root {
       --bg-gradient: linear-gradient(135deg, #e0d7f7, #ffffff);
@@ -12,6 +12,7 @@
       --card-bg: #fff;
       --border-color: #d0d4d8;
       --shadow: 0px 2px 4px rgba(0,0,0,0.2);
+      --tag-bg: rgba(138, 112, 214, 0.15);
     }
     body.dark-mode {
       --bg-gradient: linear-gradient(135deg, #000000, #1a1a1a);
@@ -20,6 +21,7 @@
       --card-bg: #222;
       --border-color: #444;
       --shadow: 0px 2px 4px rgba(0,0,0,0.6);
+      --tag-bg: rgba(180, 151, 255, 0.25);
     }
     body {
       margin: 0;
@@ -28,25 +30,100 @@
       color: var(--text-color);
       font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       transition: background 0.3s, color 0.3s;
+      min-height: 100vh;
     }
     header {
       padding: 1rem;
       background-color: var(--accent-color);
       color: #fff;
-      text-align: center;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       box-shadow: var(--shadow);
     }
     header h1 {
       margin: 0;
-      font-size: 2rem;
+      font-size: 1.8rem;
+    }
+    .header-actions {
+      display: flex;
+      gap: 1rem;
+    }
+    .btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-size: 0.9rem;
+    }
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem;
+    }
+    .app-container {
+      display: flex;
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .sidebar {
+      width: 250px;
+      flex-shrink: 0;
+    }
+    .sidebar-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    .sidebar-card h3 {
+      margin-top: 0;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 0.5rem;
+      font-size: 1.1rem;
+    }
+    .sidebar-card ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .sidebar-card li {
+      padding: 0.4rem 0;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .sidebar-card li:hover {
+      color: var(--accent-color);
+    }
+    .tag-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .tag-badge {
+      background: var(--tag-bg);
+      padding: 0.3rem 0.6rem;
+      border-radius: 3px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    .tag-badge:hover {
+      transform: translateY(-2px);
     }
     #notes-container {
-      max-width: 800px;
-      margin: 2rem auto;
+      flex: 1;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 1rem;
-      padding: 0 1rem;
     }
     .note-card {
       background: var(--card-bg);
@@ -54,11 +131,15 @@
       border-radius: 8px;
       box-shadow: var(--shadow);
       padding: 1rem;
-      transition: transform 0.2s;
+      transition: transform 0.2s, box-shadow 0.2s;
       cursor: pointer;
+      height: 200px;
+      display: flex;
+      flex-direction: column;
     }
     .note-card:hover {
       transform: translateY(-4px);
+      box-shadow: 0px 4px 8px rgba(0,0,0,0.3);
     }
     .note-card h2 {
       margin: 0 0 0.5rem 0;
@@ -66,39 +147,154 @@
       border-bottom: 1px solid var(--border-color);
       padding-bottom: 0.3rem;
     }
+    .note-card-content {
+      flex: 1;
+      overflow: hidden;
+    }
     .note-card p {
       font-size: 0.9rem;
       line-height: 1.4;
+      margin: 0.5rem 0;
+      color: var(--text-color);
+      opacity: 0.9;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-height: 3.6rem;
+      display: -webkit-box;
+      -webkit-line-clamp: 5;
+      -webkit-box-orient: vertical;
     }
-    .toggle-btn {
-      position: fixed;
-      top: 1rem;
-      right: 1rem;
-      background: #fff;
-      border: none;
-      padding: 0.5rem 1rem;
-      border-radius: 4px;
+    .note-card-footer {
+      margin-top: auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      opacity: 0.7;
+    }
+    .note-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.3rem;
+      margin-top: 0.5rem;
+    }
+    .note-tag {
+      background: var(--tag-bg);
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      font-size: 0.75rem;
+    }
+    .search-bar {
+      margin-bottom: 1.5rem;
+      width: 100%;
+      position: relative;
+    }
+    .search-input {
+      width: 100%;
+      padding: 0.8rem 1rem 0.8rem 2.5rem;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: var(--card-bg);
+      color: var(--text-color);
+      font-size: 1rem;
       box-shadow: var(--shadow);
-      cursor: pointer;
-      transition: background 0.3s;
+      box-sizing: border-box;
     }
-    .toggle-btn:hover {
-      background: var(--border-color);
+    .search-icon {
+      position: absolute;
+      left: 0.8rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--text-color);
+      opacity: 0.5;
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    .view-links {
+      display: flex;
+      gap: 1rem;
+    }
+    .view-link {
+      color: var(--accent-color);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .view-link:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 768px) {
+      .app-container {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+      }
+      #notes-container {
+        grid-template-columns: 1fr;
+      }
+    }
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: var(--text-color);
+      opacity: 0.7;
+    }
+    .loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 2rem;
+      font-style: italic;
+      color: var(--text-color);
+      opacity: 0.7;
     }
   </style>
 </head>
 <body>
   <header>
-    <h1>My Notes</h1>
+    <h1>NRS Notes</h1>
+    <div class="header-actions">
+      <button class="btn" id="newNoteBtn">New Note</button>
+      <button class="btn" id="toggleDark">Toggle Dark Mode</button>
+    </div>
   </header>
-  <button class="toggle-btn" id="toggleDark">Toggle Dark Mode</button>
-  <div id="notes-container">
-    <!-- Note cards will be injected here -->
+
+  <div class="container">
+    <div class="search-bar">
+      <span class="search-icon">🔍</span>
+      <input type="text" class="search-input" placeholder="Search notes..." id="searchInput">
+    </div>
+
+    <div class="controls">
+      <div class="notes-count" id="notesCount">0 notes</div>
+      <div class="view-links">
+        <a href="/graph" class="view-link">View Graph</a>
+      </div>
+    </div>
+
+    <div class="app-container">
+      <div class="sidebar">
+        <div class="sidebar-card">
+          <h3>Recent Tags</h3>
+          <div class="tag-list" id="tagList">
+            <!-- Tags will be injected here -->
+          </div>
+        </div>
+      </div>
+
+      <div id="notes-container">
+        <div class="loading">Loading notes...</div>
+      </div>
+    </div>
   </div>
+
   <script>
+    // Theme handling
     function setTheme(theme) {
       if (theme === 'dark') {
         document.body.classList.add('dark-mode');
@@ -107,6 +303,7 @@
       }
       localStorage.setItem('theme', theme);
     }
+
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
       setTheme(savedTheme);
@@ -115,29 +312,186 @@
     } else {
       setTheme('light');
     }
+
     document.getElementById('toggleDark').addEventListener('click', () => {
       setTheme(document.body.classList.contains('dark-mode') ? 'light' : 'dark');
     });
 
-    // Fetch note list from /notes (assumes backend provides a JSON array)
-    fetch('/notes-list')
-      .then(response => response.json())
-      .then(notes => {
-        const container = document.getElementById('notes-container');
-        notes.forEach(note => {
-          const card = document.createElement('div');
-          card.className = 'note-card';
-          // Simple extraction: assume note object has 'title' and 'preview'
-          card.innerHTML = `<h2>${note.title}</h2><p>${note.preview || ''}</p>`;
-          card.addEventListener('click', () => {
-            window.location.href = "/notes/" + note.slug;
-          });
-          container.appendChild(card);
+    // Date formatter
+    function formatDate(timestamp) {
+      const date = new Date(timestamp * 1000);
+      return date.toLocaleDateString();
+    }
+
+    // Fetch and render notes
+    let allNotes = [];
+    let activeTagFilter = null;
+
+    async function fetchNotes() {
+      try {
+        const response = await fetch('/api/notes');
+        if (!response.ok) throw new Error('Failed to fetch notes');
+
+        allNotes = await response.json();
+        renderNotes(allNotes);
+        renderTags(allNotes);
+
+        document.getElementById('notesCount').textContent = `${allNotes.length} notes`;
+      } catch (err) {
+        document.getElementById('notes-container').innerHTML = `
+          <div class="empty-state">
+            <p>Error loading notes: ${err.message}</p>
+            <p>Try refreshing the page</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderNotes(notesToRender) {
+      const container = document.getElementById('notes-container');
+
+      if (notesToRender.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>No notes found</p>
+            <p>Create a new note to get started</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = '';
+
+      notesToRender.forEach(note => {
+        const card = document.createElement('div');
+        card.className = 'note-card';
+
+        // Create tags HTML if any
+        let tagsHtml = '';
+        if (note.tags && note.tags.length > 0) {
+          const tagElements = note.tags.map(tag =>
+            `<span class="note-tag">${tag}</span>`
+          );
+          tagsHtml = `
+            <div class="note-tags">
+              ${tagElements.join('')}
+            </div>
+          `;
+        }
+
+        card.innerHTML = `
+          <h2>${note.title}</h2>
+          <div class="note-card-content">
+            <p>${note.preview || 'No preview available'}</p>
+            ${tagsHtml}
+          </div>
+          <div class="note-card-footer">
+            <span>Last modified: ${formatDate(note.last_modified)}</span>
+          </div>
+        `;
+
+        card.addEventListener('click', () => {
+          window.location.href = `/notes/${note.slug}`;
         });
-      })
-      .catch(err => {
-        document.getElementById('notes-container').innerHTML = "<p>Error loading notes.</p>";
+
+        container.appendChild(card);
       });
+    }
+
+    function renderTags(notes) {
+      // Extract unique tags
+      const tags = new Map();
+
+      notes.forEach(note => {
+        if (note.tags && note.tags.length > 0) {
+          note.tags.forEach(tag => {
+            if (tags.has(tag)) {
+              tags.set(tag, tags.get(tag) + 1);
+            } else {
+              tags.set(tag, 1);
+            }
+          });
+        }
+      });
+
+      // Sort tags by frequency
+      const sortedTags = [...tags.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10);  // Take top 10
+
+      const tagList = document.getElementById('tagList');
+      tagList.innerHTML = '';
+
+      if (sortedTags.length === 0) {
+        tagList.innerHTML = '<p>No tags found</p>';
+        return;
+      }
+
+      sortedTags.forEach(([tag, count]) => {
+        const tagBadge = document.createElement('span');
+        tagBadge.className = 'tag-badge';
+        tagBadge.textContent = `${tag} (${count})`;
+
+        tagBadge.addEventListener('click', () => {
+          if (activeTagFilter === tag) {
+            // Clear filter
+            activeTagFilter = null;
+            renderNotes(allNotes);
+            tagBadge.style.fontWeight = 'normal';
+          } else {
+            // Apply filter
+            activeTagFilter = tag;
+            const filteredNotes = allNotes.filter(note =>
+              note.tags && note.tags.includes(tag)
+            );
+            renderNotes(filteredNotes);
+
+            // Reset all tag badges
+            document.querySelectorAll('.tag-badge').forEach(badge => {
+              badge.style.fontWeight = 'normal';
+            });
+
+            // Highlight selected tag
+            tagBadge.style.fontWeight = 'bold';
+          }
+        });
+
+        tagList.appendChild(tagBadge);
+      });
+    }
+
+    // Search functionality
+    const searchInput = document.getElementById('searchInput');
+
+    searchInput.addEventListener('input', () => {
+      const query = searchInput.value.toLowerCase().trim();
+
+      if (query === '') {
+        renderNotes(allNotes);
+        return;
+      }
+
+      const filtered = allNotes.filter(note =>
+        note.title.toLowerCase().includes(query) ||
+        note.preview.toLowerCase().includes(query) ||
+        (note.tags && note.tags.some(tag => tag.toLowerCase().includes(query)))
+      );
+
+      renderNotes(filtered);
+    });
+
+    // New note button
+    document.getElementById('newNoteBtn').addEventListener('click', () => {
+      const title = prompt('Enter a title for your new note:');
+      if (!title) return;
+
+      // In a real app, you'd create the note via API
+      // For now, we'll redirect to the TUI command
+      alert('To create a note, please use the TUI with command: nrs new "' + title + '"');
+    });
+
+    // Initialize
+    fetchNotes();
   </script>
 </body>
 </html>

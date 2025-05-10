@@ -1,12 +1,14 @@
-use std::path::PathBuf;
+use dirs::home_dir;
 use std::fs;
 use std::io::{self, Write};
-use dirs::home_dir;
+use std::path::PathBuf;
 use walkdir::WalkDir;
 
 /// Return the path to `~/notes`.
 pub fn notes_dir() -> PathBuf {
-    home_dir().expect("Could not locate home directory.").join("notes")
+    home_dir()
+        .expect("Could not locate home directory.")
+        .join("notes")
 }
 
 /// Build a `.md` path for the given stem in `~/notes`.
@@ -28,7 +30,7 @@ pub fn create_new_note(title: &str) -> io::Result<()> {
     }
     let mut f = fs::File::create(&path)?;
     let content = format!(
-r#"---
+        r#"---
 title: {t}
 tags: []
 ---
