@@ -1,19 +1,13 @@
-import { useParams, Link, useNavigate } from "react-router-dom";
-import {
-  ChevronLeft,
-  Tag,
-  Calendar,
-  ExternalLink,
-  Loader2,
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { useNote } from "../hooks/useNotes";
-import MarkdownRenderer from "../components/MarkdownRenderer";
+import { useParams, useNavigate } from 'react-router-dom';
+import { Calendar, ExternalLink, Loader2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { useNote } from '../hooks/useNotes';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 
 const NotePage = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
-  const { note, content, loading, error } = useNote(slug || "");
+  const { note, content, loading, error } = useNote(slug || '');
 
   if (!slug) {
     return <div>Invalid note ID</div>;
@@ -30,7 +24,7 @@ const NotePage = () => {
         <div className="flex flex-col items-center">
           <motion.div
             animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+            transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
           >
             <Loader2 className="h-12 w-12 text-primary-500 dark:text-primary-400" />
           </motion.div>
@@ -79,9 +73,7 @@ const NotePage = () => {
           <h2 className="text-2xl font-bold mb-3 text-gray-800 dark:text-gray-100">
             Failed to load note
           </h2>
-          <p className="text-gray-600 dark:text-gray-300 mb-4">
-            {error || "Note not found"}
-          </p>
+          <p className="text-gray-600 dark:text-gray-300 mb-4">{error || 'Note not found'}</p>
           <motion.button
             className="mt-4 px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-md shadow-md"
             whileHover={{ scale: 1.05 }}
@@ -97,138 +89,51 @@ const NotePage = () => {
 
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
-    return date.toLocaleDateString() + " " + date.toLocaleTimeString();
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
   };
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.3 }}
+      className="max-w-3xl mx-auto"
     >
-      {/* Back button */}
+      {/* Note content */}
       <motion.div
-        className="mb-3"
-        initial={{ x: -20, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ duration: 0.4 }}
+        className="mb-4"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
       >
-        <motion.div
-          whileHover={{ x: -5 }}
-          transition={{ type: "spring", stiffness: 400 }}
-        >
-          <Link
-            to="/"
-            className="inline-flex items-center text-primary-500 hover:text-primary-700 font-medium"
-          >
-            <ChevronLeft size={16} />
-            <span>Back to notes</span>
-          </Link>
-        </motion.div>
-      </motion.div>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">{note.title}</h1>
 
-      {/* Note header - combined with header information */}
-      <motion.div
-        className="card mb-4 border-l-4 border-primary-500 dark:border-primary-400"
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-      >
-        <div className="flex flex-col space-y-2">
-          <motion.h1
-            className="text-2xl font-bold text-gray-800 dark:text-gray-100"
-            initial={{ x: -10, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            {note.title}
-          </motion.h1>
-
-          <motion.div
-            className="flex flex-wrap gap-3 text-sm text-gray-600 dark:text-gray-400"
-            initial={{ y: 10, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-          >
-            <motion.div
-              className="flex items-center gap-1"
-              whileHover={{ scale: 1.05 }}
-            >
-              <Calendar size={14} className="text-primary-400" />
-              Last modified: {formatDate(note.last_modified)}
-            </motion.div>
-
-            {note.tags && note.tags.length > 0 && (
-              <motion.div
-                className="flex items-center gap-2"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-              >
-                <Tag size={14} className="text-primary-400" />
-                <div className="flex flex-wrap gap-1.5">
-                  <AnimatePresence>
-                    {note.tags.map((tag, index) => (
-                      <motion.div
-                        key={tag}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.5 + index * 0.1 }}
-                      >
-                        <motion.div
-                          whileHover={{ scale: 1.1, y: -2 }}
-                          whileTap={{ scale: 0.95 }}
-                        >
-                          <Link
-                            to={`/?search=${encodeURIComponent(tag)}`}
-                            className="tag hover:bg-primary-200 dark:hover:bg-primary-800 transition-all duration-300"
-                          >
-                            {tag}
-                          </Link>
-                        </motion.div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-              </motion.div>
-            )}
-          </motion.div>
+        <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 mb-6">
+          <Calendar size={14} className="mr-1 text-gray-400" />
+          {formatDate(note.last_modified)}
         </div>
       </motion.div>
 
       {/* Note content */}
       <motion.div
-        className="card overflow-hidden"
-        initial={{ y: 30, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.4 }}
+        className="prose dark:prose-invert max-w-none bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.3 }}
       >
         <MarkdownRenderer content={content} />
       </motion.div>
 
       {/* Editor link */}
-      <motion.div
-        className="mt-8 text-center"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.6 }}
-      >
-        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
-          This is a read-only view
-        </p>
-        <motion.button
-          className="inline-flex items-center gap-2 text-primary-500 hover:text-primary-600 dark:hover:text-primary-300 text-sm font-medium px-4 py-2 rounded-full bg-primary-50 dark:bg-primary-900/30 hover:bg-primary-100 dark:hover:bg-primary-800/50 transition-colors duration-300"
-          onClick={() =>
-            alert("To edit this note, use the TUI with command: nrs tui")
-          }
-          whileHover={{ scale: 1.05, y: -2 }}
-          whileTap={{ scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 400 }}
+      <div className="mt-6 text-right">
+        <button
+          className="inline-flex items-center gap-1 text-gray-500 hover:text-primary-600 text-sm px-3 py-1"
+          onClick={() => alert('To edit this note, use the TUI with command: nrs tui')}
         >
-          <ExternalLink size={16} />
-          Open in editor
-        </motion.button>
-      </motion.div>
+          <ExternalLink size={14} />
+          <span>Edit</span>
+        </button>
+      </div>
     </motion.div>
   );
 };
